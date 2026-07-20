@@ -1,0 +1,16 @@
+defaults: base.yaml
+dataset:
+  name: synthetic
+  turns: [100, 500, 1000, 5000]
+  examples: 100
+  examples_by_horizon:
+    100: 100
+    500: 75
+    1000: 50
+    5000: 50
+  train_seed: 1000
+  validation_seed: 2000
+  test_seeds: [11, 13, 17]
+evaluation:
+  agents: [vanilla, window, rag, pure_liquid, lexical_only, lalm]
+  paired_bootstrap_samples: 10000

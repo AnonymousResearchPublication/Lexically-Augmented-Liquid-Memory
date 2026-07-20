@@ -1,0 +1,11 @@
+defaults: base.yaml
+dataset:
+  name: locomo
+  input: data/external/locomo/locomo10.json
+  text_only_with_released_image_captions: true
+answer_llm:
+  # LoCoMo category-5's released evaluator recognizes this exact abstention.
+  abstention_response: "No information available."
+evaluation:
+  agents: [vanilla, window, rag, pure_liquid, lexical_only, lalm]
+  qa_batch_size: 4

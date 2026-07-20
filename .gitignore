@@ -1,0 +1,58 @@
+# Python environments and local secrets
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Python caches, builds, and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+coverage.xml
+htmlcov/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Downloaded datasets and model caches
+data/external/
+data/cache/
+models/
+/checkpoints/
+.cache/
+huggingface/
+
+# Model weights and array dumps
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+!results/**/*.pt
+!results/**/checkpoints/
+!results/**/checkpoints/**
+
+# Generated paper/build artifacts
+/paper/
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+paper.tex
+

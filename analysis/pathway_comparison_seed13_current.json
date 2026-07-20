@@ -1,0 +1,13 @@
+{
+    "output_name":  "pathway_comparison_seed13_current.csv",
+    "bootstrap_seed":  2027,
+    "bootstrap_samples":  10000,
+    "run_ids":  {
+                    "synthetic_main":  "20260708T103354Z_multi_seed",
+                    "longmemeval_main":  "20260709T094752Z_longmemeval"
+                },
+    "source_prediction_sha256":  {
+                                     "synthetic_main":  "1501112ba0fa0228bc692cc97c4dcbf2f7fd8d6883efedac44d65daf0a3510db",
+                                     "longmemeval_main":  "4d85d64ece24d5a9449d04863463a7fd78c8e2a66389a121b82c1a68a18cf585"
+                                 }
+}

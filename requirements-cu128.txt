@@ -1,0 +1,6 @@
+# Python 3.12 + NVIDIA CUDA 12.8. Use the CUDA index as the primary index:
+# an extra index can allow a newer CPU-only PyPI wheel to win resolution.
+--index-url https://download.pytorch.org/whl/cu128
+torch==2.10.0
+torchvision==0.25.0
+torchaudio==2.10.0

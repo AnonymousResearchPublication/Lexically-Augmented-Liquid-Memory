@@ -1,0 +1,7 @@
+defaults: base.yaml
+
+# Optional second trained checkpoint for reviewer-facing robustness.
+# This changes only the training/evaluation random seed; architecture and
+# all memory hyperparameters remain identical to base.yaml.
+run:
+  seed: 13

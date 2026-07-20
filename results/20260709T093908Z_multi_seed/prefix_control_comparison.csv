@@ -1,0 +1,5 @@
+horizon,treatment,control,paired_examples,treatment_accuracy,control_accuracy,delta_treatment_minus_control,ci95_low,ci95_high
+1000,lalm,lexical_only,150,0.72,0.6733333333333333,0.04666666666666667,0.006666666666666667,0.08666666666666667
+1000,lalm,lalm_zero_prefix,150,0.72,0.7,0.02,-0.02666666666666667,0.06666666666666667
+1000,lalm,lalm_random_prefix,150,0.72,0.5866666666666667,0.13333333333333333,0.08,0.19333333333333333
+1000,lalm,lalm_permuted_prefix,150,0.72,0.56,0.16,0.1,0.22

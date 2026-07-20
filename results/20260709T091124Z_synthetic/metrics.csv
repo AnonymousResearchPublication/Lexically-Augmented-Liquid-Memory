@@ -1,0 +1,6 @@
+horizon,agent,examples,accuracy
+1000,lexical_only,50,0.66
+1000,lalm,50,0.78
+1000,lalm_zero_prefix,50,0.76
+1000,lalm_random_prefix,50,0.62
+1000,lalm_permuted_prefix,50,0.64

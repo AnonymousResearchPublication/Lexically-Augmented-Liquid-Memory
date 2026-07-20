@@ -1,0 +1,19 @@
+defaults: synthetic.yaml
+
+# Sham-prefix control for the 1,000-turn LALM mechanism check.
+# This is intentionally separate from the 5,000-turn control run.
+# It keeps lexical retrieval identical and changes only the 16 recurrent
+# virtual tokens passed before the answer prompt.
+dataset:
+  turns: [1000]
+  examples_by_horizon:
+    1000: 50
+  test_seeds: [11, 13, 17]
+
+evaluation:
+  agents:
+    - lexical_only
+    - lalm_zero_prefix
+    - lalm_random_prefix
+    - lalm_permuted_prefix
+    - lalm

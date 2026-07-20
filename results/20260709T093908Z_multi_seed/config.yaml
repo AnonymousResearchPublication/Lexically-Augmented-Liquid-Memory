@@ -1,0 +1,91 @@
+aggregate_type: multi_seed
+answer_llm:
+  max_input_tokens: 4096
+  max_new_tokens: 64
+  model: Qwen/Qwen2.5-3B-Instruct
+  provider: transformers_local
+  revision: null
+  temperature: 0.0
+checkpoint: results\20260708T103921Z_train_liquid\checkpoints\best.pt
+dataset:
+  examples: 100
+  examples_by_horizon:
+    100: 100
+    500: 75
+    1000: 50
+    5000: 50
+  name: synthetic
+  test_seeds:
+  - 11
+  - 13
+  - 17
+  train_seed: 1000
+  turns:
+  - 1000
+  validation_seed: 2000
+embedding:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  provider: sentence_transformers
+evaluation:
+  agents:
+  - lexical_only
+  - lalm
+  - lalm_zero_prefix
+  - lalm_random_prefix
+  - lalm_permuted_prefix
+  paired_bootstrap_samples: 10000
+liquid:
+  dt: 0.1
+  lexical_bytes: 256
+  lexical_memory:
+    capacity: 512
+    correction_cues:
+    - 'correction:'
+    - actually
+    - instead
+    - 'not '
+    - 'now '
+    - changed
+    - currently
+    - 'update:'
+    enabled: true
+    max_text_bytes: 1024
+    prefix_scale: 0.1
+    redundancy_threshold: 0.82
+    top_k: 8
+  prefix_tokens: 16
+  slots: 8
+  state_dim: 256
+  storage_dtype: float32
+  tau_max: 20.0
+  tau_min: 0.1
+rag:
+  index: flat_inner_product
+  max_context_chars: 12000
+  max_turn_chars: 2000
+  top_k: 8
+run:
+  immutable: true
+  output_root: results
+  seed: 7
+run_kind: aggregate
+seeds:
+- 11
+- 13
+- 17
+source_run_ids:
+- 20260709T092057Z_synthetic
+- 20260709T092625Z_synthetic
+- 20260709T093247Z_synthetic
+training:
+  alignment_weight: 0.0
+  correction_loss: true
+  epochs: 5
+  examples: 1500
+  horizons:
+  - 32
+  - 64
+  - 128
+  - 256
+  learning_rate: 0.0003
+  lexical_context: true

@@ -1,0 +1,47 @@
+run:
+  # Training/runtime RNG seed. Synthetic evaluation datasets use the explicit
+  # test_seeds in configs/synthetic.yaml instead.
+  seed: 7
+  output_root: results
+  immutable: true
+embedding:
+  provider: sentence_transformers
+  model: sentence-transformers/all-MiniLM-L6-v2
+answer_llm:
+  provider: transformers_local
+  model: Qwen/Qwen2.5-3B-Instruct
+  revision: null
+  temperature: 0.0
+  max_input_tokens: 4096
+  max_new_tokens: 64
+liquid:
+  slots: 8
+  state_dim: 256
+  storage_dtype: float32
+  prefix_tokens: 16
+  lexical_bytes: 256
+  lexical_memory:
+    enabled: true
+    capacity: 512
+    top_k: 8
+    max_text_bytes: 1024
+    redundancy_threshold: 0.82
+    prefix_scale: 0.1
+    correction_cues:
+      ["correction:", "actually", "instead", "not ", "now ", "changed", "currently", "update:"]
+  tau_min: 0.1
+  tau_max: 20.0
+  dt: 0.1
+rag:
+  top_k: 8
+  index: flat_inner_product
+  max_turn_chars: 2000
+  max_context_chars: 12000
+training:
+  examples: 1500
+  horizons: [32, 64, 128, 256]
+  epochs: 5
+  learning_rate: 0.0003
+  correction_loss: true
+  alignment_weight: 0.0
+  lexical_context: true

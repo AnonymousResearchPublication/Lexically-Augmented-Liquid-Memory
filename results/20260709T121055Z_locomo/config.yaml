@@ -1,0 +1,77 @@
+answer_llm:
+  abstention_response: No information available.
+  max_input_tokens: 4096
+  max_new_tokens: 64
+  model: Qwen/Qwen2.5-3B-Instruct
+  provider: transformers_local
+  revision: null
+  temperature: 0.0
+dataset:
+  input: data/external/locomo/locomo10.json
+  name: locomo
+  text_only_with_released_image_captions: true
+embedding:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  provider: sentence_transformers
+evaluation:
+  agents: &id001
+  - pure_liquid
+  qa_batch_size: 4
+execution:
+  agents: *id001
+  checkpoint: results\20260708T103921Z_train_liquid\checkpoints\best.pt
+  examples: 1986
+  lexical_top_k: 8
+  prefix_scale: 0.1
+  selection: contiguous
+  selection_seed: null
+  shared_history_reuse: true
+  smoke: false
+  start_index: 0
+liquid:
+  dt: 0.1
+  lexical_bytes: 256
+  lexical_memory:
+    capacity: 512
+    correction_cues:
+    - 'correction:'
+    - actually
+    - instead
+    - 'not '
+    - 'now '
+    - changed
+    - currently
+    - 'update:'
+    enabled: true
+    max_text_bytes: 1024
+    prefix_scale: 0.1
+    redundancy_threshold: 0.82
+    top_k: 8
+  prefix_tokens: 16
+  slots: 8
+  state_dim: 256
+  storage_dtype: float32
+  tau_max: 20.0
+  tau_min: 0.1
+rag:
+  index: flat_inner_product
+  max_context_chars: 12000
+  max_turn_chars: 2000
+  top_k: 8
+run:
+  immutable: true
+  output_root: results
+  seed: 7
+run_kind: evaluation
+training:
+  alignment_weight: 0.0
+  correction_loss: true
+  epochs: 5
+  examples: 1500
+  horizons:
+  - 32
+  - 64
+  - 128
+  - 256
+  learning_rate: 0.0003
+  lexical_context: true

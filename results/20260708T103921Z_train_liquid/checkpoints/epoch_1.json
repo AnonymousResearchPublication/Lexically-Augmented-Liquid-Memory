@@ -1,0 +1,12 @@
+{
+  "dataset_hashes": {
+    "generated_training_manifest": "acf94c5e57e1c21feba0b4bf300e10f9b4cc66b8b269351f1f433ba43cd16d3c"
+  },
+  "epoch": 1,
+  "seed": 7,
+  "validation_metrics": {
+    "loss": 0.09178572315722704,
+    "teacher_forced_exact": 0.9555555555555556,
+    "token_accuracy": 0.9905410316255358
+  }
+}

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liquid-memory-agents"
+version = "0.1.0"
+description = "Learned fixed-capacity liquid memory for long-horizon LLM agents"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "PyYAML>=6.0",
+  "torch>=2.2",
+  "transformers>=4.40",
+  "sentence-transformers>=2.7",
+  "tqdm>=4.66",
+  "nltk>=3.8",
+]
+
+[project.optional-dependencies]
+rag = ["faiss-cpu>=1.8"]
+analysis = ["pandas>=2.2", "matplotlib>=3.8", "scikit-learn>=1.4"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-p no:cacheprovider"
+markers = ["gpu: requires a CUDA device and downloaded model weights", "integration: slower integration test"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
