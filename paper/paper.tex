@@ -1,0 +1,455 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{url}
+\usepackage[hidelinks,pdfauthor={},pdftitle={LALM: Lexically Augmented Liquid Memory for Long-Horizon LLM Agents}]{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\graphicspath{{Figures/}{paper/figures/}{figures/}}
+
+\title{LALM: Lexically Augmented Liquid Memory for Long-Horizon LLM Agents}
+\author{\IEEEauthorblockN{A }}
+
+\author{
+\IEEEauthorblockN{
+Riyan Bhargava\textsuperscript{1},
+Venkata Shreya Vella\textsuperscript{1},
+Kavya Sree Nunna\textsuperscript{1}
+}
+\IEEEauthorblockA{
+\textsuperscript{1}BITS Pilani, Dubai Campus\\
+\small
+\{f20230115, f20230096, f20230072\}@dubai.bits-pilani.ac.in
+}
+
+\vspace{4pt}
+
+\IEEEauthorblockN{
+Elakkiya Rajasekar\textsuperscript{2}
+}
+\IEEEauthorblockA{
+\textsuperscript{2}Department of Computer Science, BITS Pilani, Dubai Campus\\
+\small
+elakkiya@dubai.bits-pilani.ac.in
+}
+}
+
+
+
+
+\newcommand{\figureslot}[2]{%
+  \IfFileExists{#1}{\includegraphics[width=\linewidth]{#1}}{%
+  \fbox{\parbox[c][1.25in][c]{0.94\linewidth}{\centering
+  \textbf{OVERLEAF FIGURE SLOT}\\[2pt]#2}}}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Long-horizon language-model agents must preserve an evolving semantic state while still reproducing exact names, dates, numbers, and corrected values. A compact continuous state supports bounded-size memory but cannot reliably reconstruct arbitrary strings, while retrieval over the full interaction history preserves exact text at a storage cost that grows with conversation length. Lexically Augmented Liquid Memory (LALM) is a fixed-capacity hybrid architecture coupling an $8\times256$ liquid-inspired recurrent state with a 512-entry exact-text sidecar, yielding a maximum 1.32~MB logical payload. Across three evaluation-stream seeds, LALM is strongest at every synthetic horizon for both training checkpoints; at 5,000 turns it retains 72.00--76.67\% exact-value accuracy while a capacity-matched 512-entry FIFO RAG control falls to 0\%. The zero-prefix comparison is the decisive sham control and provides stronger evidence for the recurrent pathway under seed 13 than seed 7. On LongMemEval, LALM and bounded RAG are statistically comparable. On LoCoMo, LALM exceeds bounded RAG by 1.97--2.60 points, although inference is limited by only ten independent conversations. These findings support LALM as a bounded-memory design point but do not establish universal superiority over retrieval-based methods. Code and reproduction instructions are available at \url{https://github.com/AnonymousResearchPublication/Lexically-Augmented-Liquid-Memory}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+long-horizon agents, external memory, retrieval-augmented generation,
+recurrent memory, language models
+\end{IEEEkeywords}
+
+\section{Introduction}
+\label{sec:intro}
+Persistent agent memory must satisfy two competing requirements: it must compress conversational history into a compact representation that preserves semantic, corrective, and temporal information, while also retaining the ability to reproduce exact lexical content that may never have appeared in training~\cite{zhang2024memory}. A finite continuous state is well suited to abstraction and summarization but is inherently limited for lossless, open-vocabulary copying. Retrieval over the full interaction history can preserve exact text, but its storage and lookup cost scale with conversation length~\cite{lewis2020rag}.
+
+This work studies a bounded compromise between these two regimes. LALM uses a learned liquid-inspired recurrent state to capture semantic and temporal information, augmented with a fixed-capacity lexical sidecar for copy-critical evidence. Unlike a growing history index, the sidecar is strictly bounded: it stores at most 512 entries, constrains each entry to 1,024 UTF-8 bytes, and applies a deterministic online replacement policy before the inference-time query is observed. At inference time, the answer model is conditioned on both exact retrieved text and a scaled virtual-token prefix derived from the recurrent state.
+
+To enable controlled analysis, the architecture is decomposed into pure Liquid, lexical-only, and combined LALM variants, all evaluated under the same frozen backbone. Across the reported synthetic long-horizon experiments, the combined recurrent-plus-lexical approach outperforms both lexical-only memory and growing-history RAG. Logical memory payload and uncertainty are reported across the synthetic, LongMemEval, and LoCoMo benchmarks.
+
+This paper makes four contributions. The first is LALM itself, a fixed-capacity hybrid memory architecture that combines a bounded liquid-inspired recurrent state with a bounded lexical exact-text sidecar, yielding a constant 1.32~MB logical payload independent of conversation length (Section~\ref{sec:capacity}). The second is a controlled ablation design that isolates the contribution of each memory pathway (Pure Liquid, lexical-only, LALM) under an identical frozen answer model, together with sham-prefix controls that separate the effect of the trained recurrent state from that of an arbitrary continuous prefix (Sections~\ref{sec:setup} and~\ref{sec:ablations}). The third is a multi-seed, paired-bootstrap evaluation spanning a synthetic long-horizon benchmark and two realistic conversational benchmarks, LongMemEval and LoCoMo, with results reported honestly where they are inconclusive rather than selectively where they favor LALM (Section~\ref{sec:results}). The fourth is a reproducible experimental protocol, with released code, configurations, checkpoints, and per-run manifests supporting independent verification of every reported number (Section~\ref{sec:ethics}).
+
+\section{Related Work}
+Agent memory can be represented through explicit textual records, latent state, and parametric updates~\cite{zhang2024memory}. Existing systems primarily maintain persistent memory outside the language model itself: generative agents store, retrieve, and reflect on textual experiences~\cite{park2023generative}; Reflexion uses verbal feedback from past interactions~\cite{shinn2023reflexion}; MemGPT manages memory tiers through virtual context~\cite{packer2023memgpt}; and Mem0 extracts and consolidates salient facts into long-term memory~\cite{chhikara2025mem0}. These systems establish the importance of persistent memory but rely on service architectures and control assumptions that differ from the bounded-memory setting considered here.
+
+A separate line of work augments language models with external retrieval or specialized memory. RAG combines parametric knowledge with non-parametric evidence~\cite{lewis2020rag}; Memorizing Transformers retrieve stored representations~\cite{wu2022memorizing}; Recurrent Memory Transformers carry learned memory tokens across segments~\cite{bulatov2022rmt}; and Titans combines attention with learned long-term memory~\cite{behrouz2025titans}. HMT and R$^3$Mem further improve hierarchical retrieval and compression~\cite{he2025hmt}~\cite{wang2025r3mem}, and IndexMem, the closest prior system, combines a bounded retained-token cache with a latent state for evicted information~\cite{yang2026indexmem}; A-Mem~\cite{xu2025amem} and H-Mem~\cite{ye2026hmem} similarly organize and update explicit records. LALM instead maintains a compact adaptive recurrent state through query-independent streaming writes, preserves an exact-text cache, and fuses both through a learned prefix while keeping the answer model frozen.
+
+Continuous-time recurrent models are a further relevant direction: liquid time-constant networks use state-dependent continuous-time dynamics~\cite{hasani2021ltc}, S4 introduces structured state-space sequence models~\cite{gu2022s4}, and Mamba employs input-dependent state-space parameters~\cite{gu2024mamba}. LALM instead uses a compact nonlinear recurrent bank solely as external agent memory rather than adopting these architectures for sequence modeling. LongMemEval evaluates conversational memory across information extraction, multi-session reasoning, updates, temporal reasoning, and abstention~\cite{wu2024longmemeval}, while LoCoMo evaluates ten long multi-session conversations across temporal, multi-hop, single-hop, open-domain, and adversarial questions~\cite{maharana2024locomo}.
+
+Across these lines of work, a common gap remains: explicit-record and growing-history retrieval systems preserve information without a fixed capacity bound, so storage scales with conversation length; bounded alternatives such as IndexMem do not isolate what a trained continuous state contributes beyond an arbitrary continuous prefix of the same size; and continuous-time recurrent architectures are designed and evaluated as sequence models rather than as capacity-bounded memory paired with exact-text retrieval. LALM closes this gap by coupling a strictly bounded recurrent state with a strictly bounded lexical sidecar under a constant logical payload independent of conversation length (Section~\ref{sec:capacity}), and by directly testing whether the trained recurrent state contributes beyond an arbitrary continuous prefix through the sham-prefix controls in Section~\ref{sec:setup}.
+
+\begin{figure*}[t]
+\centering
+\figureslot{Figures/lalm_architecture.pdf}{Two query-independent write paths:
+turn $\rightarrow$ recurrent $8\times256$ state and turn $\rightarrow$
+512-slot lexical sidecar; query-only read sends 16 virtual tokens and top-8
+exact entries to frozen Qwen2.5-3B-Instruct.}
+\caption{LALM architecture. Solid arrows denote query-independent memory
+writes, while dashed arrows denote query-time reads. The fixed lexical sidecar
+retrieves up to $k=8$ exact-text entries, and the liquid-inspired recurrent state
+supplies a 16-token prefix scaled by $\alpha=0.1$ when lexical evidence is
+available. The frozen answer model is Qwen2.5-3B-Instruct~\cite{yang2024qwen25}.}
+\label{fig:architecture}
+\end{figure*}
+
+\section{Method}
+Figure~\ref{fig:architecture} summarizes the two query-independent write paths and the query-time read described in this section.
+
+\subsection{Problem and write policy}
+\label{sec:problem}
+At turn $t$, the agent observes text $o_t$ with role, timestamp, and session identifier, and updates $M_t=f(M_{t-1},o_t)$ without access to the future query. After $T$ turns, query $q$ reads but does not modify memory, and the shared answer model generates $\hat y$. LALM's persistent memory budget is independent of $T$.
+
+\subsection{Turn representation}
+\label{sec:turnrep}
+The recurrent and lexical pathways process the same serialized conversation turn but use different representations. The recurrent path receives 641 features: a 384-dimensional normalized SentenceTransformer embedding~\cite{reimers2019sentencebert}, the first 256 UTF-8 bytes of the serialized turn scaled to $[0,1]$ in fixed positions, and the clipped byte length divided by 256. The deployed encoder is \texttt{all-MiniLM-L6-v2}, from the MiniLM family~\cite{wang2020minilm}. The lexical sidecar uses the 384-dimensional semantic embedding as its retrieval key and stores the corresponding bounded exact text.
+
+\subsection{Liquid-inspired recurrent path}
+\label{sec:recurrent}
+The recurrent path is designed to adapt its own effective update rate to each incoming turn rather than applying a fixed decay: slot-specific time constants, write gates, and overwrite gates jointly determine how strongly a new turn is allowed to alter the persistent state. The persistent state $X_t\in\mathbb{R}^{8\times256}$ starts at zero. For slot $s$, the cell computes an input-dependent time constant, write gate, and overwrite gate from $[x_{t-1,s};u_t]$:
+\begin{align}
+\tau_{t,s} &= \min\!\left(
+0.1+\operatorname{softplus}(W_\tau[x_{t-1,s};u_t]),20\right),\\
+g_{t,s} &= \sigma(W_g[x_{t-1,s};u_t]), \qquad
+r_{t,s} = \sigma(W_r[x_{t-1,s};u_t]).
+\end{align}
+Normalized input and slot projections produce novelty $n_{t,s}$ and softmax assignment $a_{t,s}$. With
+$\tilde{x}_{t,s}=\tanh(W_xx_{t-1,s}+W_uu_t+b)$, the update is
+\begin{align}
+x_{t,s}=x_{t-1,s}
++0.1\,a_{t,s}g_{t,s}(0.5+0.5r_{t,s}n_{t,s})
+\frac{\tilde{x}_{t,s}-x_{t-1,s}}{\tau_{t,s}} .
+\end{align}
+The implementation multiplies the final fraction and all gates together before adding the result to the previous state, and clips state values to $[-5,5]$. A query-conditioned reader attends to all eight slots, and a trained adapter maps the read vector to 16 virtual tokens in the frozen answer model's embedding space. This is a liquid-inspired gated leaky integrator, not an implementation of the full LTC architecture of \citet{hasani2021ltc}.
+
+\subsection{Bounded lexical path}
+\label{sec:lexical}
+Where the recurrent path compresses turns into a fixed-size continuous state, the lexical path is designed to preserve exact strings under the same fixed-capacity constraint, at the cost of an explicit and inspectable replacement policy rather than a learned one. The lexical sidecar has $C=512$ slots. Each reserves a 384-dimensional float32 key and at most 1,024 text bytes. Entries are appended until capacity is reached. Once full, a new entry is compared with active keys; if the maximum cosine similarity exceeds $\rho=0.82$, an entry containing an explicit correction cue replaces the closest item, and otherwise the redundant non-correction entry is discarded. A novel entry replaces an item in the most mutually redundant region of the cache. The case-insensitive cue substrings are
+\texttt{correction:}, \texttt{actually}, \texttt{instead}, \texttt{not },
+\texttt{now }, \texttt{changed}, \texttt{currently}, and \texttt{update:};
+they are fixed in the evaluated implementation and reproduced explicitly here, and the run configurations also serialize the list. This deterministic heuristic is practical rather than optimal: substring matching can produce both missed corrections and false positives.
+
+At query time, cosine search retrieves $k=8$ exact-text entries. When lexical evidence is present, the Liquid prefix is scaled by $\alpha=0.1$ to avoid overwhelming copyable evidence; Pure Liquid uses the unscaled prefix.
+
+Algorithm~\ref{alg:lalm} consolidates the query-independent write and query-time read procedures described above into a single specification. \textsc{Write} is applied once per turn and updates both pathways without observing the query; \textsc{Read} is applied once per query and does not modify memory. The Pure-Liquid and Lexical-only conditions in Section~\ref{sec:setup} correspond to disabling the lexical or recurrent branch of \textsc{Read}, respectively, while leaving \textsc{Write} for the retained pathway unchanged.
+
+
+\subsection{Capacity and design-choice provenance}
+\label{sec:capacity}
+The maximum logical user-memory payload is
+\begin{align}
+8\!\times\!256\!\times\!4+
+512(384\!\times\!4+1024)=1{,}318{,}912\ \text{bytes},
+\end{align}
+or 1.32~MB (1.26~MiB), independent of $T$. Shared model parameters and temporary activations are excluded for every method. This is a logical payload budget, not process-resident memory: Python object, allocator, and index metadata are excluded.
+
+The tuned values are distinguished from engineering constants. The 384-dimensional key is fixed by the public sentence encoder. The $8\times256$ state, 16 prefix tokens, 512 cache entries, 1,024 bytes per entry, and $\rho=0.82$ are treated as fixed engineering choices in the reported study; optimality of these values is not established. Only $k$ and $\alpha$ were selected on the 50-example development split, from $k\in\{4,8\}$ and $\alpha\in\{0.05,0.1,0.2\}$. The step size 0.1, the time-constant range $[0.1,20]$, and the loss weights are training hyperparameters rather than memory-capacity claims.
+
+\begin{algorithm}[!t]
+\footnotesize
+\caption{LALM query-independent write and query-time read}
+\label{alg:lalm}
+\begin{algorithmic}[1]
+\Procedure{Write}{$o_t$, $X_{t-1}$, $L_{t-1}$}
+  \State $u_t \gets \Call{Encode}{o_t}$ \Comment{641-d: 384-d embedding + byte features}
+  \For{$s = 1$ \textbf{to} $8$}
+    \State compute $\tau_{t,s}, g_{t,s}, r_{t,s}, n_{t,s}, a_{t,s}$ from $[x_{t-1,s}; u_t]$ \Comment{Eqs.~1--2}
+    \State $x_{t,s} \gets$ gated leaky-integrator update, clipped to $[-5,5]$ \Comment{Eq.~3}
+  \EndFor
+  \State $X_t \gets \{x_{t,s}\}_{s=1}^{8}$
+  \State $(k_t, \text{text}_t) \gets \Call{SemanticKey}{o_t}, \Call{ExactText}{o_t}$
+  \If{$|L_{t-1}| < 512$}
+    \State $L_t \gets L_{t-1} \cup \{(k_t, \text{text}_t)\}$
+  \Else
+    \State $j^\ast \gets \arg\max_{(k,\cdot) \in L_{t-1}} \cos(k_t, k)$
+    \If{$\cos(k_t, k_{j^\ast}) > \rho$}
+      \If{$\text{text}_t$ contains a correction cue}
+        \State replace entry $j^\ast$ with $(k_t, \text{text}_t)$ \Comment{corrected duplicate}
+      \Else
+        \State discard $(k_t, \text{text}_t)$ \Comment{redundant, non-correction}
+      \EndIf
+    \Else
+      \State $j' \gets$ index of most mutually redundant region of $L_{t-1}$
+      \State replace entry $j'$ with $(k_t, \text{text}_t)$ \Comment{novel entry}
+    \EndIf
+    \State $L_t \gets$ updated cache
+  \EndIf
+  \State \Return $X_t, L_t$
+\EndProcedure
+\Statex
+\Procedure{Read}{$q$, $X_T$, $L_T$}
+  \State $u_q^{\text{lex}} \gets \Call{SemanticEmbed}{q}$ \Comment{384-d, for lexical retrieval}
+  \State $u_q^{\text{rec}} \gets \Call{Encode}{q}$ \Comment{641-d, for the recurrent reader}
+  \State $E \gets \Call{TopK}{L_T, u_q^{\text{lex}}, k{=}8}$ \Comment{exact-text entries by cosine similarity}
+  \State $h \gets \Call{QueryConditionedReader}{X_T, u_q^{\text{rec}}}$
+  \State $p \gets \Call{StateToPrefixAdapter}{h}$ \Comment{16 virtual tokens}
+  \If{$E \neq \emptyset$}
+    \State $p \gets \alpha \cdot p$ \Comment{$\alpha = 0.1$}
+  \EndIf
+  \State $\hat{y} \gets \Call{FrozenAnswerModel}{\text{system prompt}, E, p, q}$
+  \State \Return $\hat{y}$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+\section{Results}
+\label{sec:results}
+\subsection{Experimental setup}
+\label{sec:setup}
+Only the recurrent cell, query reader, and prefix adapter are trained; the sentence encoder, lexical replacement rule, and frozen Qwen2.5-3B-Instruct~\cite{yang2024qwen25} answer model stay fixed. Training uses 1,500 synthetic examples, balanced across 32, 64, 128, and 256 turns and split 70/15/15 into 1,050 training, 225 validation, and 225 held-out internal-test examples, with the lexical sidecar populated identically at training and evaluation. Training runs five epochs with AdamW on a loss combining teacher-forced answer generation, a 0.01-weight slot-diversity term, and a 0.1-weight staleness term applied only to correction examples; checkpoint selection maximizes validation teacher-forced exact match, using minimum validation loss as the tiebreaker. Seven conditions are compared under a 4,096-token input budget and a 64-token generation cap: Vanilla, Window, growing-history RAG, capacity-matched bounded RAG (top-8 over the most recent 512 entries, each capped at 1,024 bytes), Pure Liquid, Lexical-only, and LALM.
+
+Three benchmarks are used. On the synthetic benchmark, training seeds 7 and 13 are evaluated separately across evaluation-stream seeds 11, 13, and 17, with 100, 75, 50, and 50 examples per stream at horizons of 100, 500, 1,000, and 5,000 turns (aggregate $n=300,225,150,150$); paired 95\% intervals use 10,000 bootstrap samples conditional on the training checkpoint, and horizons are generated independently, so cross-horizon comparisons are a stress-test trend rather than a within-example effect. Sham-prefix controls at 1,000 and 5,000 turns ($n=150$ each) hold the lexical sidecar fixed and replace the 16 recurrent tokens with zeros, a norm-matched random prefix, or a fixed permutation of the learned prefix. On LongMemEval, the reported split excludes the first 50 development examples and evaluates indices 50--499 ($n=450$); only the checkpoint-dependent Pure Liquid and LALM agents are rerun per training seed. On LoCoMo, the complete method is frozen before evaluating all 1,986 QA pairs across ten conversations (5,882 turns), using text-only evaluation with released BLIP captions; category 1 is scored component-wise, categories 2--4 use normalized token F1, and category 5 scores pre-specified abstention. Checkpoint-independent baselines are reused across seeds, whereas Pure Liquid and LALM require checkpoint-specific reruns; this reuse explains the different run identifiers reported in Table~\ref{tab:locomo-overall}.
+
+\subsection{Synthetic horizon effect}
+\begin{table*}[t]
+\centering
+\small
+\caption{Synthetic exact-value accuracy (\%, mean $\pm$ sample standard
+deviation over three evaluation streams). Columns contain
+$n=300,225,150,150$ paired predictions, respectively, within each training
+seed.}
+\label{tab:synthetic}
+\begin{tabular}{lcccc}
+\toprule
+Method & 100 & 500 & 1K & 5K\\
+\midrule
+\multicolumn{5}{l}{\emph{Training seed 7}}\\
+Vanilla & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$\\
+Window & $18.33\!\pm\!4.04$ & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$\\
+RAG & $66.33\!\pm\!1.15$ & $63.11\!\pm\!5.39$ & $58.67\!\pm\!6.11$ & $58.67\!\pm\!5.03$\\
+Bounded RAG & $66.33\!\pm\!1.15$ & $63.56\!\pm\!5.55$ & $20.67\!\pm\!3.06$ & $0.00\!\pm\!0.00$\\
+Pure Liquid & $15.00\!\pm\!2.65$ & $14.22\!\pm\!0.77$ & $16.00\!\pm\!0.00$ & $16.00\!\pm\!0.00$\\
+Lexical-only & $72.67\!\pm\!1.15$ & $66.67\!\pm\!3.53$ & $67.33\!\pm\!4.16$ & $66.00\!\pm\!2.00$\\
+LALM & $\mathbf{73.33}\!\pm\!2.08$ & $\mathbf{69.33}\!\pm\!5.33$ & $\mathbf{72.00}\!\pm\!2.00$ & $\mathbf{72.00}\!\pm\!0.00$\\
+\midrule
+\multicolumn{5}{l}{\emph{Training seed 13}}\\
+Vanilla & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$\\
+Window & $18.33\!\pm\!4.04$ & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$ & $0.00\!\pm\!0.00$\\
+RAG & $66.33\!\pm\!1.15$ & $63.11\!\pm\!5.39$ & $58.67\!\pm\!6.11$ & $58.67\!\pm\!5.03$\\
+Bounded RAG & $66.33\!\pm\!1.15$ & $63.56\!\pm\!5.55$ & $20.67\!\pm\!3.06$ & $0.00\!\pm\!0.00$\\
+Pure Liquid & $11.33\!\pm\!0.58$ & $10.22\!\pm\!0.77$ & $3.33\!\pm\!2.31$ & $0.00\!\pm\!0.00$\\
+Lexical-only & $72.67\!\pm\!1.15$ & $66.67\!\pm\!3.53$ & $67.33\!\pm\!4.16$ & $66.00\!\pm\!2.00$\\
+LALM & $\mathbf{80.67}\!\pm\!1.15$ & $\mathbf{74.22}\!\pm\!2.78$ & $\mathbf{74.67}\!\pm\!3.06$ & $\mathbf{76.67}\!\pm\!3.06$\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Table~\ref{tab:synthetic} shows LALM achieves the highest accuracy at every reported horizon for both training checkpoints. Bounded RAG matches growing RAG at 100 turns but falls to 20.67\% at 1,000 turns and 0\% at 5,000 turns after early facts leave its 512-entry FIFO store; LALM remains at 72.00\% and 76.67\% at 5,000 turns for seeds 7 and 13. Pure Liquid remains far below the text-preserving methods, indicating that exact lexical evidence is essential here. The high-horizon LALM/lexical-only gap reflects a fusion effect whose mechanism the sham-prefix controls below test directly.
+
+\begin{figure}[t]
+\centering
+\figureslot{Figures/synthetic_crossover.png}{Four-horizon line plot with mean
+accuracy, three-stream error bars, and $n=300,225,150,150$ annotations. Highlight
+LALM, lexical-only, and RAG; render other baselines in muted colors.}
+\caption{Synthetic performance for the completed training-seed-7 and
+training-seed-13 checkpoints. Error bars show sample standard deviation over
+three evaluation streams.}
+\label{fig:synthetic}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Synthetic sham-prefix accuracy at 1,000 turns (\%, mean $\pm$
+standard deviation over three evaluation streams; $n=150$ paired predictions
+within each training seed). This is generated as a separate run from the
+5,000-turn sham-prefix control.}
+\label{tab:prefix-controls-1k}
+\begin{tabular}{lcc}
+\toprule
+& \multicolumn{2}{c}{1K} \\
+\cmidrule(lr){2-3}
+Condition & Train seed 7 & Train seed 13 \\
+\midrule
+Lexical-only    & $67.33\!\pm\!4.16$ & $67.33\!\pm\!4.16$ \\
+Zero prefix     & $70.00\!\pm\!7.21$ & $70.00\!\pm\!7.21$ \\
+Random prefix   & $58.67\!\pm\!3.06$ & $63.33\!\pm\!4.16$ \\
+Permuted prefix & $56.00\!\pm\!2.00$ & $65.33\!\pm\!2.31$ \\
+LALM            & $\mathbf{72.00}\!\pm\!2.00$ & $\mathbf{74.67}\!\pm\!3.06$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Synthetic sham-prefix accuracy (\%, mean $\pm$ standard deviation
+over three evaluation streams; $n=150$ paired predictions within each training
+seed). All conditions except lexical-only use the same lexical sidecar and
+differ only in the 16 continuous prefix tokens supplied to the answer model.}
+\label{tab:prefix-controls-5k}
+\begin{tabular}{lcc}
+\toprule
+& \multicolumn{2}{c}{5K} \\
+\cmidrule(lr){2-3}
+Condition & Train seed 7 & Train seed 13 \\
+\midrule
+Lexical-only    & $66.00\!\pm\!2.00$ & $66.00\!\pm\!2.00$ \\
+Zero prefix     & $68.67\!\pm\!4.16$ & $68.67\!\pm\!4.16$ \\
+Random prefix   & $59.33\!\pm\!2.31$ & $64.00\!\pm\!2.00$ \\
+Permuted prefix & $59.33\!\pm\!1.15$ & $66.00\!\pm\!4.00$ \\
+LALM            & $\mathbf{72.00}\!\pm\!0.00$ & $\mathbf{76.67}\!\pm\!3.06$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Tables~\ref{tab:prefix-controls-1k} and~\ref{tab:prefix-controls-5k} test whether any continuous prefix, not the trained recurrent state specifically, explains the LALM gain. LALM outperforms lexical-only by 4.67--7.33 points at 1,000 turns and 6.00--10.67 points at 5,000 turns (seed 7 and seed 13, respectively), with larger margins over the random- and permuted-prefix controls than over the zero-prefix control. The zero-prefix condition is the decisive sham control because it preserves the sidecar and removes only recurrent-prefix information; that comparison is weaker, with the seed-7 interval including zero at both horizons. Random and permuted prefixes are supporting stress tests because they can themselves perturb the frozen model. Thus, evidence for a recurrent-state contribution is clearest for seed 13 and remains inconclusive for seed 7.
+
+\subsection{LongMemEval local diagnostics}
+\begin{table}[t]
+\centering
+\small
+\caption{Local diagnostics (\%) on LongMemEval~\cite{wu2024longmemeval} indices 50--499 ($n=450$).
+These are not upstream judge scores.}
+\label{tab:longmemeval}
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{Training seed 7}
+& \multicolumn{2}{c}{Training seed 13} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Method & Token F1 & Exact match & Token F1 & Exact match \\
+\midrule
+Vanilla      & 1.85 & 0.22 & 1.85 & 0.22 \\
+Window       & 7.45 & 0.00 & 7.45 & 0.00 \\
+RAG          & 19.53 & \textbf{13.33} & 19.53 & \textbf{13.33} \\
+Bounded RAG  & 19.11 & 13.11 & 19.11 & 13.11 \\
+Pure Liquid  & 8.07 & 4.67 & 7.84 & 4.89 \\
+Lexical-only & 18.56 & 12.22 & 18.56 & 12.22 \\
+LALM         & \textbf{20.46} & 12.89 & \textbf{20.03} & 13.11 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:longmemeval} shows a consistent but small pattern. Against bounded RAG, LALM's token-F1 lead is 1.34 points (95\% CI $[-1.39,4.13]$) for seed 7 and 0.91 points ($[-2.06,3.95]$) for seed 13; exact match differs by $-0.22$ and 0.00 points, respectively. These results remain statistically comparable rather than establishing superiority on LongMemEval.
+
+Table~\ref{tab:longmemeval-types} shows the per-type results explain the small aggregates: LALM is strongest on single-session-user (54.69/58.02 F1 for seeds 7/13) and temporal-reasoning questions (13.92/11.70); RAG is strongest on single-session-assistant questions (55.43); lexical-only is competitive on knowledge-update questions (34.11, slightly below LALM for seed 13). These subgroup comparisons are descriptive and unadjusted.
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{LongMemEval~\cite{wu2024longmemeval} per-type diagnostics. Each cell is diagnostic token
+F1 / exact match (\%). Bold marks the highest token F1 within that type and
+training checkpoint. These subgroup diagnostics are descriptive and are not
+upstream judge scores.}
+\label{tab:longmemeval-types}
+\begin{tabular}{llrrrrrr}
+\toprule
+Type & $n$ & Vanilla & Window & RAG & Pure Liquid & Lexical-only & LALM\\
+\midrule
+\multicolumn{8}{l}{\emph{Training seed 7}}\\
+Knowledge-update & 78 & 0.80/0.00 & 5.53/0.00 & 32.68/21.79 & 5.56/2.56 & \textbf{34.11/21.79} & 30.96/19.23\\
+Multi-session & 133 & 1.35/0.00 & 4.70/0.00 & 7.34/6.02 & 9.08/7.52 & \textbf{9.70/7.52} & 7.98/4.51\\
+Single-session assistant & 56 & 0.91/0.00 & 7.81/0.00 & \textbf{55.43/41.07} & 4.94/0.00 & 41.36/28.57 & 46.77/32.14\\
+Single-session preference & 30 & 4.51/0.00 & \textbf{17.60/0.00} & 4.61/0.00 & 0.65/0.00 & 3.85/0.00 & 5.51/0.00\\
+Single-session user & 20 & 3.02/0.00 & 9.34/0.00 & 24.45/20.00 & 0.00/0.00 & 39.69/30.00 & \textbf{54.69/45.00}\\
+Temporal reasoning & 133 & 2.59/0.75 & 8.61/0.00 & 11.53/6.02 & 12.74/6.77 & 8.84/4.51 & \textbf{13.92/7.52}\\
+\midrule
+\multicolumn{8}{l}{\emph{Training seed 13}}\\
+Knowledge-update & 78 & 0.80/0.00 & 5.53/0.00 & 32.68/21.79 & 5.43/2.56 & 34.11/21.79 & \textbf{34.20/23.08}\\
+Multi-session & 133 & 1.35/0.00 & 4.70/0.00 & 7.34/6.02 & 4.78/3.76 & \textbf{9.70/7.52} & 7.13/5.26\\
+Single-session assistant & 56 & 0.91/0.00 & 7.81/0.00 & \textbf{55.43/41.07} & 17.16/12.50 & 41.36/28.57 & 44.89/32.14\\
+Single-session preference & 30 & 4.51/0.00 & \textbf{17.60/0.00} & 4.61/0.00 & 2.88/0.00 & 3.85/0.00 & 5.54/0.00\\
+Single-session user & 20 & 3.02/0.00 & 9.34/0.00 & 24.45/20.00 & 2.57/0.00 & 39.69/30.00 & \textbf{58.02/45.00}\\
+Temporal reasoning & 133 & 2.59/0.75 & 8.61/0.00 & 11.53/6.02 & 10.31/6.02 & 8.84/4.51 & \textbf{11.70/5.26}\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{LoCoMo confirmatory evaluation}
+\begin{table}[t]
+\centering
+\small
+\caption{LoCoMo~\cite{maharana2024locomo} overall category-aware QA score (\%) by method and training
+checkpoint. The checkpoint-independent baseline values come from the
+full-agent seed-13 run
+\texttt{20260709T112355Z\_locomo}; seed-7 LALM and Pure Liquid come from
+\texttt{20260709T120339Z\_locomo} and
+\texttt{20260709T121055Z\_locomo}, respectively.}
+\label{tab:locomo-overall}
+\begin{tabular}{lcc}
+\toprule
+Method & Seed 7 & Seed 13\\
+\midrule
+Vanilla & 22.82 & 22.82\\
+Window & 23.38 & 23.38\\
+RAG & 31.41 & 31.41\\
+Bounded RAG & 29.81 & 29.81\\
+Pure Liquid & 4.04 & 15.08\\
+Lexical-only & 31.20 & 31.20\\
+LALM & \textbf{31.78} & \textbf{32.41}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table*}[t]
+\centering
+\small
+\caption{LoCoMo~\cite{maharana2024locomo} category-aware QA score (\%) on all 1,986 questions. Category
+counts are 282 multi-hop, 321 temporal, 96 open-domain, 841 single-hop, and
+446 adversarial questions. Checkpoint-independent rows are shared across
+training seeds; Pure Liquid and LALM are checkpoint-specific reruns.}
+\label{tab:locomo}
+\begin{tabular}{lrrrrrr}
+\toprule
+Method & Overall & Multi-hop & Temporal & Open-domain & Single-hop & Adversarial\\
+\midrule
+\multicolumn{7}{l}{\emph{Training seed 7}}\\
+Vanilla      & 22.82 & 0.71 & 0.16 & 4.02 & 0.23 & \textbf{99.78}\\
+Window       & 23.38 & 4.49 & 3.81 & 5.67 & 5.95 & 86.10\\
+RAG          & 31.41 & 13.41 & \textbf{21.02} & 7.03 & 27.20 & 63.45\\
+Bounded RAG  & 29.81 & 12.83 & 18.81 & 6.77 & 24.49 & 63.45\\
+Pure Liquid  & 4.04 & 3.59 & 1.84 & \textbf{19.39} & 3.17 & 4.26\\
+Lexical-only & 31.20 & 13.75 & 18.16 & 6.08 & 24.83 & 69.06\\
+LALM         & \textbf{31.78} & \textbf{14.07} & 18.60 & 7.95 &
+\textbf{28.56} & 63.68\\
+\midrule
+\multicolumn{7}{l}{\emph{Training seed 13}}\\
+Vanilla      & 22.82 & 0.71 & 0.16 & 4.02 & 0.23 & \textbf{99.78}\\
+Window       & 23.38 & 4.49 & 3.81 & 5.67 & 5.95 & 86.10\\
+RAG          & 31.41 & 13.41 & \textbf{21.02} & 7.03 & 27.20 & 63.45\\
+Bounded RAG  & 29.81 & 12.83 & 18.81 & 6.77 & 24.49 & 63.45\\
+Pure Liquid  & 15.08 & 4.77 & 1.37 & \textbf{15.49} & 3.67 & 52.91\\
+Lexical-only & 31.20 & 13.75 & 18.16 & 6.08 & 24.83 & 69.06\\
+LALM         & \textbf{32.41} & \textbf{15.24} & 18.16 & 4.38 &
+\textbf{30.23} & 63.68\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Compared to the synthetic benchmark, LoCoMo shows a smaller gain. LALM scores 31.78\% and 32.41\% for seeds 7 and 13, versus 29.81\% for bounded RAG. Conversation-cluster bootstrap differences favor LALM by 1.97 points (95\% CI $[0.36,3.56]$) and 2.60 points ($[1.29,3.93]$), respectively. However, because the 1,986 questions are clustered within only ten conversations, these results remain descriptive evidence from few independent units. Table~\ref{tab:locomo} further shows non-uniform category effects: growing RAG leads on temporal questions, while LALM leads on multi-hop and single-hop questions.
+
+\subsection{Memory scaling}
+LALM is designed for bounded capacity, not reduced latency. Figure~\ref{fig:memory} shows logical payload versus conversation length: growing-history RAG rises to 8,028,400 bytes at 5,000 synthetic turns, while LALM stays fixed at 1,318,912 bytes. The 512-entry bounded RAG uses at most 1.10~MB on LongMemEval and 0.90~MB on LoCoMo because many stored entries do not reach their byte cap. On LongMemEval, mean end-to-end latency is 960.8~ms for LALM versus 472.5~ms for bounded RAG; mean memory-read latency is 9.36 versus 6.87~ms. These implementation-specific measurements use one shared preloaded model and include amortized history updates, but not hardware-level memory-bandwidth profiling.
+
+\begin{figure}[t]
+\centering
+\figureslot{Figures/memory_scaling.png}{Log-scale logical payload bytes versus 100, 500,
+1,000, and 5,000 turns. Plot LALM as a flat 1,318,912-byte line and RAG at
+160,396; 802,352; 1,604,804; and 8,028,400 mean bytes.}
+\caption{Logical user-memory payload scaling. LALM reserves a fixed cache and latent
+state; the evaluated growing-history RAG stores every turn.}
+\label{fig:memory}
+\end{figure}
+
+\subsection{Ablations and analysis}
+\label{sec:ablations}
+The complete seed-7 and seed-13 pathway ablations yield three findings. First, Pure Liquid is far below the text-preserving methods, indicating that a small continuous prefix alone cannot reconstruct arbitrary lexical values; it also shows sharp seed sensitivity at 5,000 turns, reaching $16.00\pm0.00$ under seed 7 but $0.00\pm0.00$ under seed 13 (Table~\ref{tab:synthetic}). Manual inspection shows 149 of 150 seed-13 predictions are the prescribed abstention response (``I do not know'') rather than malformed generations, with no NaN or Inf values in the training log; a repeat run reproduced this exactly. A tentative explanation is that the seed-13 adapter maps long-horizon recurrent states into a narrow prefix region that systematically raises the frozen model's abstention probability; verifying this requires prefix-geometry and calibration analysis across additional training seeds. Seed-7 predictions instead vary, with limited residual accuracy --- confirming the continuous prefix alone is not a reliable mechanism for exact long-horizon recall. Second, lexical-only is the strongest non-LALM baseline, indicating the sidecar provides most of the system's copying capability. Third, LALM consistently outperforms lexical-only at every horizon for both checkpoints, with the largest gains at 5,000 turns (6.00 points seed 7, 10.67 points seed 13); the sham-prefix controls provide stronger evidence for seed 13 than seed 7.
+
+A fusion sweep on 50 development examples supports the frozen $(k,\alpha)$ choice: with $k=8$, LALM obtains 64.01\% diagnostic token F1 at $\alpha=0.1$, versus 63.52\% at $\alpha=0.2$ and 41.54\% at $\alpha=0.05$; lexical-only at $k=8$ obtains 61.97\%, and the development RAG reference obtains 48.72\%. These figures are used only for model-selection diagnostics, not as test outcomes.
+
+\section{Discussion and Limitations}
+The synthetic-benchmark results support a bounded-memory advantage that survives the sham-prefix controls: the observed margins are consistent with a genuine contribution from the trained recurrent state, though the controls test only whether an arbitrary continuous prefix could explain the gain, not the specific mechanism or whether it compensates for cache eviction at longer horizons.
+
+Evidence from the realistic benchmarks is mixed. LALM and bounded RAG are statistically comparable on LongMemEval, whereas LALM's LoCoMo advantage has conversation-clustered intervals above zero but only ten independent conversations. The bounded-RAG result addresses a simple recency-eviction policy, but learned, salience-aware, and time-aware bounded retrieval remain unevaluated, as does a direct IndexMem comparison under a common backbone and budget.
+
+These results come with several limitations. The synthetic setting is narrower than natural dialogue and trains through 256 turns despite evaluation to 5,000; LoCoMo contains only ten independent conversations despite 1,986 questions, and its scoring rewards abstention on adversarial questions. Synthetic intervals reflect evaluation-stream rather than training-seed variation. The bounded-RAG control uses only FIFO recency eviction, and the lexical sidecar's hand-written correction cues and quadratic redundancy checks may miss or evict entries. Latency is implementation- and hardware-specific; compute utilization and memory bandwidth were not profiled. Only two training seeds were completed, the seed-13 Pure Liquid collapse lacks a verified mechanistic explanation, and direct IndexMem comparison remains future work.
+
+\section{Ethical and Reproducibility Considerations}
+\label{sec:ethics}
+LALM's design pairs an $8\times256$ recurrent state with a 512-entry, human-interpretable lexical sidecar to support factual grounding and user agency through explicit correction-cue detection. Training relies primarily on synthetic data to reduce privacy risk and benchmark contamination, and this paper documents the trade-offs of fixed-capacity systems, including collision risk, retrieval bias, and loss of rare detail over long horizons.
+
+Code, configurations, dataset-preparation instructions, and commands to regenerate every table are released at the anonymized repository \url{https://github.com/AnonymousResearchPublication/Lexically-Augmented-Liquid-Memory}. Each run records its configuration, dataset manifest, predictions, environment, and validation-ready metrics; each checkpoint records its training-manifest hash. RAG payloads are recomputed from recorded histories using the current single-copy accounting rule. AI assistance was used in preparing this manuscript and is disclosed per venue policy; the human authors remain responsible for all claims.
+
+\section{Conclusion}
+LALM introduces a fixed-capacity hybrid memory architecture that combines a liquid-inspired recurrent state with a bounded lexical cache under a 1.32~MB budget. Against a capacity-matched 512-entry RAG control, LALM retains 72.00--76.67\% synthetic accuracy at 5,000 turns where bounded RAG falls to zero, performs comparably on LongMemEval, and scores 1.97--2.60 points higher on LoCoMo. The sham-prefix controls provide stronger evidence for the recurrent pathway under seed 13 than seed 7. LALM is therefore best characterized as a promising bounded-memory design point rather than a universally superior memory system.
+
+\bibliographystyle{IEEEtranN}
+\bibliography{references}
+\end{document}

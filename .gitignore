@@ -44,7 +44,9 @@ huggingface/
 !results/**/checkpoints/**
 
 # Generated paper/build artifacts
-/paper/
+/paper/*
+!/paper/paper.tex
+!/paper/references.bib
 *.aux
 *.bbl
 *.blg
@@ -54,5 +56,5 @@ huggingface/
 *.synctex.gz
 *.fdb_latexmk
 *.fls
-paper.tex
+/paper.tex
 

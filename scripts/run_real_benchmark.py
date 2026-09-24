@@ -61,7 +61,7 @@ def main() -> None:
         "--agents",
         nargs="+",
         choices=(
-            "vanilla", "window", "rag",
+            "vanilla", "window", "rag", "bounded_rag",
             "pure_liquid", "lexical_only", "lalm",
             "lalm_zero_prefix", "lalm_random_prefix", "lalm_permuted_prefix",
         ),

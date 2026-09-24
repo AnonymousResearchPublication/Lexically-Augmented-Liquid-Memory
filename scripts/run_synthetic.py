@@ -19,7 +19,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from liquid_memory_agents.agents import (
-    LALMMemoryAgent, LexicalMemoryAgent, RAGMemoryAgent, VanillaAgent,
+    BoundedRAGMemoryAgent, LALMMemoryAgent, LexicalMemoryAgent, RAGMemoryAgent, VanillaAgent,
     WindowMemoryAgent,
 )
 from liquid_memory_agents.datasets.synthetic import generate_examples
@@ -111,7 +111,7 @@ def load_lalm(
 
 def build_agents(semantic_encoder, liquid_encoder, reader, config, checkpoint, allow_untrained=False):
     allowed = {
-        "vanilla", "window", "rag",
+        "vanilla", "window", "rag", "bounded_rag",
         "pure_liquid", "lexical_only", "lalm",
         "lalm_zero_prefix", "lalm_random_prefix", "lalm_permuted_prefix",
     }
@@ -128,6 +128,14 @@ def build_agents(semantic_encoder, liquid_encoder, reader, config, checkpoint, a
         config["rag"]["top_k"],
         config["rag"].get("max_turn_chars", 2000),
         config["rag"].get("max_context_chars", 12000),
+    )
+    bounded_rag = config.get("bounded_rag", {})
+    make_bounded_rag = lambda: BoundedRAGMemoryAgent(
+        semantic_encoder, reader,
+        top_k=bounded_rag.get("top_k", config["rag"]["top_k"]),
+        capacity=bounded_rag.get("capacity", 512),
+        max_text_bytes=bounded_rag.get("max_text_bytes", 1024),
+        max_context_chars=bounded_rag.get("max_context_chars", config["rag"].get("max_context_chars", 12000)),
     )
     make_lalm = lambda: load_lalm(
         liquid_encoder, reader, config, checkpoint,
@@ -163,6 +171,7 @@ def build_agents(semantic_encoder, liquid_encoder, reader, config, checkpoint, a
         "vanilla": lambda: VanillaAgent(reader),
         "window": lambda: WindowMemoryAgent(reader),
         "rag": make_rag,
+        "bounded_rag": make_bounded_rag,
         "pure_liquid": make_pure_liquid,
         "lexical_only": make_lexical,
         "lalm": make_lalm,
@@ -316,7 +325,7 @@ def main() -> None:
         "--agents",
         nargs="+",
         choices=(
-            "vanilla", "window", "rag",
+            "vanilla", "window", "rag", "bounded_rag",
             "pure_liquid", "lexical_only", "lalm",
             "lalm_zero_prefix", "lalm_random_prefix", "lalm_permuted_prefix",
         ),

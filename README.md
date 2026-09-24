@@ -27,6 +27,7 @@ encoder, sidecar replacement policy, and answer model remain frozen.
 | `vanilla` | None |
 | `window` | Latest 50 turns |
 | `rag` | Growing flat retrieval index over all turns |
+| `bounded_rag` | Top-8 retrieval over the most recent 512 entries |
 | `pure_liquid` | Recurrent state only |
 | `lexical_only` | Bounded exact-text sidecar only |
 | `lalm` | Recurrent state and exact-text sidecar |
@@ -152,6 +153,16 @@ For LoCoMo:
   --agents vanilla window rag pure_liquid lexical_only lalm
 ```
 
+Run the capacity-matched retrieval control separately; it uses FIFO recency
+eviction with the same 512-entry and 1,024-byte-per-entry caps as LALM:
+
+```powershell
+& $PY scripts/run_real_benchmark.py `
+  --config configs/locomo.yaml `
+  --checkpoint $CKPT_SEED7 `
+  --agents bounded_rag
+```
+
 `vanilla`, `window`, `rag`, and `lexical_only` are checkpoint-independent. For
 the other training seed, it is sufficient to rerun `pure_liquid lalm` and reuse
 the checkpoint-independent rows from the full-agent run.
@@ -182,6 +193,17 @@ Generate the synthetic and memory-scaling figures from a multi-seed run:
   --output-dir Figures
 ```
 
+Compute conversation-clustered LoCoMo intervals and summarize existing runtime
+logs without rerunning generation:
+
+```powershell
+& $PY scripts/analyze_camera_ready.py `
+  --baseline-run results\20260709T112355Z_locomo `
+  --candidate-run results\20260709T120339Z_locomo `
+  --latency-run results\20260709T103718Z_longmemeval `
+  --output-dir analysis\camera_ready_seed7
+```
+
 The static paper-value figure generator is also available:
 
 ```powershell
@@ -196,7 +218,7 @@ The primary reported runs are retained under `results/`:
 | --- | --- |
 | `20260708T082250Z_train_liquid` | Training seed 13 checkpoint |
 | `20260708T103354Z_multi_seed` | Seed 13 synthetic aggregate |
-| `20260709T103921Z_train_liquid` | Training seed 7 checkpoint |
+| `20260708T103921Z_train_liquid` | Training seed 7 checkpoint |
 | `20260709T063916Z_multi_seed` | Seed 7 synthetic aggregate |
 | `20260709T091658Z_multi_seed` | Seed 13 sham-prefix aggregate at 1,000 turns |
 | `20260709T074140Z_multi_seed` | Seed 13 sham-prefix aggregate at 5,000 turns |

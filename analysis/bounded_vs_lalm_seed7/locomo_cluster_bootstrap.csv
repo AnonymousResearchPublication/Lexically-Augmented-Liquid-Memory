@@ -1,0 +1,2 @@
+candidate,comparator,questions,conversations,difference,ci95_low,ci95_high,bootstrap_samples
+bounded_rag,lalm,1986,10,-0.019706285757417563,-0.03557647746575985,-0.0036061145277438964,10000

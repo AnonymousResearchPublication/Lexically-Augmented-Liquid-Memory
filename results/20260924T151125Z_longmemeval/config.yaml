@@ -1,0 +1,87 @@
+answer_llm:
+  max_input_tokens: 4096
+  max_new_tokens: 64
+  model: Qwen/Qwen2.5-3B-Instruct
+  provider: transformers_local
+  revision: null
+  temperature: 0.0
+bounded_rag:
+  capacity: 512
+  max_context_chars: 12000
+  max_text_bytes: 1024
+  top_k: 8
+dataset:
+  input: data/external/longmemeval/longmemeval_s_cleaned.json
+  name: longmemeval
+  preserve_question_dates: true
+  preserve_session_dates: true
+embedding:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  provider: sentence_transformers
+evaluation:
+  agents: &id001
+  - bounded_rag
+  diagnostic_metrics:
+  - token_f1
+  - exact_answer_inclusion
+  - gold_session_recall
+  - evidence_coverage
+  official_evaluator: external/LongMemEval/src/evaluation/evaluate_qa.py
+execution:
+  agents: *id001
+  checkpoint: C:\Users\USER\Desktop\Design Projects and Research Papers\LNN2\Research-Paper-Riyan-Shambhavi-Kavya-Shreya\results\20260708T103921Z_train_liquid\checkpoints\best.pt
+  examples: 450
+  lexical_top_k: 8
+  prefix_scale: 0.1
+  selection: contiguous
+  selection_seed: null
+  shared_history_reuse: false
+  smoke: false
+  start_index: 50
+liquid:
+  dt: 0.1
+  lexical_bytes: 256
+  lexical_memory:
+    capacity: 512
+    correction_cues:
+    - 'correction:'
+    - actually
+    - instead
+    - 'not '
+    - 'now '
+    - changed
+    - currently
+    - 'update:'
+    enabled: true
+    max_text_bytes: 1024
+    prefix_scale: 0.1
+    redundancy_threshold: 0.82
+    top_k: 8
+  prefix_tokens: 16
+  slots: 8
+  state_dim: 256
+  storage_dtype: float32
+  tau_max: 20.0
+  tau_min: 0.1
+rag:
+  index: flat_inner_product
+  max_context_chars: 12000
+  max_turn_chars: 2000
+  top_k: 8
+run:
+  immutable: true
+  output_root: results
+  seed: 7
+run_kind: evaluation
+training:
+  alignment_weight: 0.0
+  correction_loss: true
+  epochs: 5
+  examples: 1500
+  horizons:
+  - 32
+  - 64
+  - 128
+  - 256
+  learning_rate: 0.0003
+  lexical_context: true

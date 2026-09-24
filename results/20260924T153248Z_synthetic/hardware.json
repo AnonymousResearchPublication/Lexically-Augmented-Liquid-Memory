@@ -1,0 +1,7 @@
+{
+  "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+  "cuda_available": true,
+  "gpus": [
+    "NVIDIA GeForce RTX 5080"
+  ]
+}

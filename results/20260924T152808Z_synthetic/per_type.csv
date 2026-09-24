@@ -1,0 +1,11 @@
+agent,question_type,accuracy
+bounded_rag,boolean,0.0
+bounded_rag,contradictory_update,0.42857142857142855
+bounded_rag,correction,0.35714285714285715
+bounded_rag,goal,0.6296296296296297
+bounded_rag,multi_fact,0.0
+bounded_rag,paraphrase,0.37037037037037035
+bounded_rag,repeated_fact,0.75
+bounded_rag,response_style,0.5185185185185185
+bounded_rag,stable_fact,0.6428571428571429
+bounded_rag,temporal,0.5925925925925926

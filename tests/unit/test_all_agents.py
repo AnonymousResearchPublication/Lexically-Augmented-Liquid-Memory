@@ -5,6 +5,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from liquid_memory_agents.agents import (
+    BoundedRAGMemoryAgent,
     LexicalMemoryAgent,
     LALMMemoryAgent,
     RAGMemoryAgent,
@@ -99,3 +100,19 @@ def test_rag_logical_payload_counts_shared_text_once() -> None:
     expected = record.embedding.numel() * record.embedding.element_size()
     expected += len(record.text.encode("utf-8")) + 8
     assert agent.memory_size_bytes() == expected
+
+
+def test_bounded_rag_evicts_oldest_turns_at_capacity() -> None:
+    agent = BoundedRAGMemoryAgent(Encoder(), Answerer(), top_k=1, capacity=2)
+    for value in ("alpha", "beta", "gamma"):
+        agent.observe({"role": "user", "content": value}, session_id=value)
+    assert [record.session_id for record in agent.turns] == ["beta", "gamma"]
+    assert agent.diagnostics()["eviction_policy"] == "fifo_recency"
+
+
+def test_bounded_rag_caps_stored_text_bytes() -> None:
+    agent = BoundedRAGMemoryAgent(
+        Encoder(), Answerer(), top_k=1, capacity=2, max_text_bytes=32
+    )
+    agent.observe({"role": "user", "content": "x" * 200})
+    assert len(agent.turns[0].text.encode("utf-8")) <= 32

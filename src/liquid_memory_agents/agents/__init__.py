@@ -4,13 +4,14 @@ from .base import AgentResponse, BaseAgent
 
 __all__ = [
     "AgentResponse", "BaseAgent", "VanillaAgent", "WindowMemoryAgent",
-    "RAGMemoryAgent", "LALMMemoryAgent", "LexicalMemoryAgent",
+    "RAGMemoryAgent", "BoundedRAGMemoryAgent", "LALMMemoryAgent", "LexicalMemoryAgent",
 ]
 
 _MODULES = {
     "VanillaAgent": ".vanilla",
     "WindowMemoryAgent": ".window",
     "RAGMemoryAgent": ".rag",
+    "BoundedRAGMemoryAgent": ".rag",
     "LALMMemoryAgent": ".liquid",
     "LexicalMemoryAgent": ".lexical",
 }

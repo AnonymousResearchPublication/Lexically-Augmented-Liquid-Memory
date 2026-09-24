@@ -37,6 +37,11 @@ rag:
   index: flat_inner_product
   max_turn_chars: 2000
   max_context_chars: 12000
+bounded_rag:
+  capacity: 512
+  top_k: 8
+  max_text_bytes: 1024
+  max_context_chars: 12000
 training:
   examples: 1500
   horizons: [32, 64, 128, 256]

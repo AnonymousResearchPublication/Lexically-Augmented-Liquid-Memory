@@ -106,3 +106,40 @@ class RAGMemoryAgent(BaseAgent):
 
     def diagnostics(self) -> dict[str, Any]:
         return {"turns": len(self.turns), "sessions": len(self.sessions), **self._last}
+
+
+class BoundedRAGMemoryAgent(RAGMemoryAgent):
+    """Recency-evicted RAG with the same entry and text caps as LALM's sidecar."""
+
+    name = "bounded_rag"
+
+    def __init__(
+        self, encoder, answerer, top_k: int = 8, capacity: int = 512,
+        max_text_bytes: int = 1024, max_context_chars: int = 12000,
+    ) -> None:
+        if capacity < 1 or max_text_bytes < 1:
+            raise ValueError("capacity and max_text_bytes must be positive")
+        super().__init__(encoder, answerer, top_k, max_text_bytes, max_context_chars)
+        self.capacity, self.max_text_bytes = capacity, max_text_bytes
+
+    def _enforce_capacity(self) -> None:
+        for record in self.turns:
+            encoded = record.text.encode("utf-8")
+            if len(encoded) > self.max_text_bytes:
+                record.text = encoded[: self.max_text_bytes].decode("utf-8", errors="ignore")
+        if len(self.turns) > self.capacity:
+            del self.turns[: len(self.turns) - self.capacity]
+        self.sessions.clear()
+        for record in self.turns:
+            self.sessions.setdefault(record.session_id, []).append(record.text)
+
+    def observe(self, turn, timestamp=None, session_id=None) -> None:
+        super().observe(turn, timestamp, session_id)
+        self._enforce_capacity()
+
+    def observe_many(self, observations) -> None:
+        super().observe_many(observations)
+        self._enforce_capacity()
+
+    def diagnostics(self) -> dict[str, Any]:
+        return {"capacity": self.capacity, "eviction_policy": "fifo_recency", **super().diagnostics()}
